@@ -1,6 +1,7 @@
 import time
 import asyncio
 import os
+import json
 from pathlib import Path
 from typing import Dict, Any
 from fastapi import FastAPI, HTTPException, Request
@@ -11,12 +12,16 @@ from pydantic import BaseModel, Field
 from Engine.aif_core_engine import AIFtwareEngine
 
 GEMINI_ENABLED = bool(os.environ.get("GEMINI_API_KEY", "").strip())
+_gemini_client = None
+_genai = None
 if GEMINI_ENABLED:
     try:
         from google import genai as _genai
         _gemini_client = _genai.Client()
-    except ImportError:
+    except Exception:
         GEMINI_ENABLED = False
+        _gemini_client = None
+        _genai = None
 
 app = FastAPI(
     title="AI.ftware Core Engine",
@@ -100,8 +105,7 @@ class GeminiEngine:
 
     @staticmethod
     def generate(prompt: str) -> str:
-        from google import genai
-        client = genai.Client()
+        client = _gemini_client or _genai.Client()
         response = client.models.generate_content(
             model=GeminiEngine.MODEL,
             contents=prompt,
@@ -114,23 +118,34 @@ class CPUFallbackEngine:
     def generate(prompt: str, domain: str = "default") -> str:
         engine = AIFtwareEngine()
         result = engine.pipeline(prompt, domain if domain != "default" else "regulatory_framework")
-        return result
+        try:
+            data = json.loads(result)
+            status = data.get("status", "UNKNOWN")
+            mode = data.get("execution_mode", "UNKNOWN")
+            facts = data.get("injected_facts", "")
+            synthesis = data.get("synthesized_response", "")
+            return f"CPU Execution Report\nDomain: {domain}\nStatus: {status}\nMode: {mode}\nFacts: {facts}\nAnalysis: {synthesis}"
+        except (json.JSONDecodeError, TypeError):
+            return result
 
 
 class ResponseRouter:
     @staticmethod
     def route(prompt: str, facts: dict) -> tuple:
         domain = facts.get("domain_detected", "default")
+        gemini_error = None
         if GEMINI_ENABLED:
             try:
                 output = GeminiEngine.generate(prompt)
-                return output, "Gemini-2.5-Flash", True
-            except Exception:
+                return output, "Gemini-2.5-Flash", True, None
+            except Exception as e:
+                gemini_error = str(e)
+                print(f"[Gemini] Error: {gemini_error}")
                 fallback = CPUFallbackEngine.generate(prompt, domain)
-                return fallback, "CPU-Fallback", False
+                return fallback, "CPU-Fallback", False, gemini_error
         else:
             output = CPUFallbackEngine.generate(prompt, domain)
-            return output, "CPU-Deterministic", False
+            return output, "CPU-Deterministic", False, None
 
 
 class UserRequest(BaseModel):
@@ -167,7 +182,10 @@ async def process_cpu_request(payload: UserRequest):
         facts = await KnowledgeVault.fetch_verified_facts(payload.user_id, clean_prompt)
         word_count = len(clean_prompt.split())
 
-        final_output, engine_name, is_gemini = ResponseRouter.route(clean_prompt, facts)
+        final_output, engine_name, is_gemini, gemini_error = ResponseRouter.route(clean_prompt, facts)
+
+        if gemini_error:
+            final_output = f"[Gemini failed: {gemini_error[:200]}]\n\nUsing CPU fallback:\n\n{final_output}"
 
         final_verification = {
             "is_hallucinated": False,
@@ -176,6 +194,7 @@ async def process_cpu_request(payload: UserRequest):
             "domain": facts.get("domain_detected", "general"),
             "engine": engine_name,
             "gemini_active": is_gemini,
+            "gemini_error": gemini_error,
         }
 
         execution_time_ms = (time.perf_counter() - start_time) * 1000
