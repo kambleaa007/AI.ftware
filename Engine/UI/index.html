@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI.ftware Engine Interface</title>
+    <style>
+        :root {
+            --bg-primary: #0a0f1d;
+            --bg-secondary: #131a30;
+            --accent-blue: #00d2ff;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #1e293b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Layout Structure */
+        .sidebar {
+            width: 320px;
+            background-color: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-primary);
+        }
+
+        /* Typography & Branding */
+        .brand {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.05em;
+        }
+        .brand span {
+            color: var(--accent-blue);
+        }
+
+        .metrics-card {
+            background-color: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .metric-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.875rem;
+        }
+        .metric-label { color: var(--text-muted); }
+        .metric-value { font-weight: 600; color: #34d399; }
+
+        /* Chat / Console Feed */
+        .console-feed {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 16px;
+            border-radius: 12px;
+            line-height: 1.5;
+            font-size: 0.95rem;
+        }
+
+        .message.user {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            align-self: flex-end;
+        }
+
+        .message.engine {
+            background-color: rgba(0, 210, 255, 0.05);
+            border: 1px solid rgba(0, 210, 255, 0.2);
+            align-self: flex-start;
+        }
+
+        /* Input Controls */
+        .input-area {
+            padding: 24px 30px;
+            background-color: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 16px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 14px 18px;
+            color: var(--text-main);
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--accent-blue);
+        }
+
+        button {
+            background-color: var(--accent-blue);
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            padding: 0 24px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover { opacity: 0.9; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar Dashboard Layer -->
+    <div class="sidebar">
+        <div class="brand">AI<span>.ftware</span></div>
+        <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">
+            Hardware Shifting Engine. Bypassing cloud GPU limitations via deterministic CPU clustering frameworks.
+        </p>
+        
+        <div class="metrics-card">
+            <h4 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Engine Telemetry</h4>
+            <div class="metric-item">
+                <span class="metric-label">Hardware Architecture:</span>
+                <span class="metric-value" style="color: var(--accent-blue);" id="hardware-tag">Awaiting Init...</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">Compute Engine Latency:</span>
+                <span class="metric-value" id="latency-tag">0.00 ms</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">Structural Fidelity:</span>
+                <span class="metric-value" id="fidelity-tag">100% Deterministic</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Output & Interactive Feed -->
+    <div class="main-content">
+        <div class="console-feed" id="chat-feed">
+            <div class="message engine">
+                <strong>AI.ftware Engine Online.</strong> Ready to process strings. Send a text string or instruction set to evaluate deterministic data constraints on zero-latency CPU threads.
+            </div>
+        </div>
+
+        <div class="input-area">
+            <input type="text" id="prompt-input" placeholder="Type a prompt to run directly on the CPU infrastructure..." autocomplete="off">
+            <button id="send-btn" onclick="submitToEngine()">Execute</button>
+        </div>
+    </div>
+
+    <!-- API Connection Broker Script -->
+    <script>
+        const chatFeed = document.getElementById('chat-feed');
+        const promptInput = document.getElementById('prompt-input');
+        const sendBtn = document.getElementById('send-btn');
+
+        // Submit form value directly to our local FastAPI server
+        async function submitToEngine() {
+            const promptText = promptInput.value.trim();
+            if (!promptText) return;
+
+            // Update UI with User Message state
+            appendMessage(promptText, 'user');
+            promptInput.value = '';
+            setLoadingState(true);
+
+            try {
+                const response = await fetch('http://127.0.0', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: "demo-user-in",
+                        prompt: promptText,
+                        context_override: {}
+                    })
+                });
+
+                if (!response.ok) throw new Error('Engine processing error.');
+
+                const data = await response.json();
+
+                // Hydrate Telemetry Sidebar with live analytical variables
+                document.getElementById('hardware-tag').innerText = "Native CPU Core";
+                document.getElementById('latency-tag').innerText = `${data.execution_time_ms} ms`;
+                
+                // Print verified structural answer directly to feed
+                appendMessage(data.final_output, 'engine');
+
+            } catch (error) {
+                appendMessage(`System Failure: Could not reach the AI.ftware core engine server. Make sure your FastAPI backend app.py script is actively running locally on port 8000.`, 'engine');
+                console.error(error);
+            } finally {
+                setLoadingState(false);
+            }
+        }
+
+        function appendMessage(text, sender) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${sender}`;
+            msgDiv.innerText = text;
+            chatFeed.appendChild(msgDiv);
+            chatFeed.scrollTop = chatFeed.scrollHeight; // Auto-scroll to view results
+        }
+
+        function setLoadingState(isLoading) {
+            if (isLoading) {
+                sendBtn.disabled = true;
+                sendBtn.innerText = 'Routing...';
+            } else {
+                sendBtn.disabled = false;
+                sendBtn.innerText = 'Execute';
+            }
+        }
+
+        // Allow executing prompts directly by hitting the 'Enter' key
+        promptInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') submitToEngine();
+        });
+    </script>
+</body>
+</html>
