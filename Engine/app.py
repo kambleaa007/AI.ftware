@@ -1,18 +1,20 @@
 import time
 import asyncio
+import os
+from pathlib import Path
 from typing import Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-# 1. Initialize the FastAPI Web Server
 app = FastAPI(
     title="AI.ftware Core Engine",
     description="Production CPU-Optimized Compound AI Architecture",
     version="1.0.0"
 )
 
-# Enable Cross-Origin Resource Sharing (Allows your frontend website to talk to this API)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,6 +22,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+UI_DIR = Path(__file__).parent / "UI"
+if UI_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(UI_DIR)), name="static")
+
+@app.get("/")
+async def serve_frontend(request: Request):
+    index_path = UI_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    return {"status": "Engine running. UI not found."}
 
 # 2. Define Strict Data Schemas (Enforcing CPU-side structural logic)
 class UserRequest(BaseModel):
@@ -105,7 +118,7 @@ if __name__ == "__main__":
     # This block allows your app to run perfectly on BOTH your local machine and the cloud.
     cloud_port = int(os.environ.get("PORT", 8000))
     
-    print(f"🚀 Initializing AI.ftware Web Interface on Production CPU Port {cloud_port}...")
+    print(f"Initializing AI.ftware Web Interface on Production CPU Port {cloud_port}...")
     
     # CRUCIAL CHANGE: host must be "0.0.0.0" to receive external cloud traffic
-    uvicorn.run("app:app", host="0.0.0.0", port=cloud_port, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=cloud_port, reload=False)
