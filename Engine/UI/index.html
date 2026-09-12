@@ -103,6 +103,28 @@
             background-color: rgba(0, 210, 255, 0.05);
             border: 1px solid rgba(0, 210, 255, 0.2);
             align-self: flex-start;
+            white-space: pre-wrap;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-right: 8px;
+        }
+        .badge.gemini {
+            background-color: rgba(138, 43, 226, 0.3);
+            color: #c4a5ff;
+            border: 1px solid rgba(138, 43, 226, 0.5);
+        }
+        .badge.cpu {
+            background-color: rgba(0, 210, 255, 0.15);
+            color: var(--accent-blue);
+            border: 1px solid rgba(0, 210, 255, 0.3);
         }
 
         /* Input Controls */
@@ -169,6 +191,10 @@
                 <span class="metric-label">Structural Fidelity:</span>
                 <span class="metric-value" id="fidelity-tag">100% Deterministic</span>
             </div>
+            <div class="metric-item">
+                <span class="metric-label">Active Engine:</span>
+                <span class="metric-value" id="engine-tag" style="color: #fbbf24;">Standby</span>
+            </div>
         </div>
     </div>
 
@@ -218,14 +244,22 @@
                 const data = await response.json();
 
                 // Hydrate Telemetry Sidebar with live analytical variables
-                document.getElementById('hardware-tag').innerText = "Native CPU Core";
+                const engineName = data.hardware_used || data.verified_data?.engine || "Unknown";
+                document.getElementById('hardware-tag').innerText = engineName;
                 document.getElementById('latency-tag').innerText = `${data.execution_time_ms} ms`;
                 if (data.verified_data && data.verified_data.domain) {
                     document.getElementById('fidelity-tag').innerText = data.verified_data.domain.toUpperCase() + " DETECTED";
                 }
-                
+                document.getElementById('engine-tag').innerText = engineName;
+
+                // Build engine badge
+                const isGemini = data.verified_data && data.verified_data.gemini_active;
+                const badge = document.createElement('span');
+                badge.className = `badge ${isGemini ? 'gemini' : 'cpu'}`;
+                badge.innerText = isGemini ? 'Gemini' : 'CPU';
+
                 // Print verified structural answer directly to feed
-                appendMessage(data.final_output, 'engine');
+                appendMessage(badge.outerHTML + data.final_output, 'engine');
 
             } catch (error) {
                 appendMessage("System Failure: Could not reach the AI.ftware core engine server. Ensure the backend is running and accessible.", 'engine');
@@ -238,9 +272,13 @@
         function appendMessage(text, sender) {
             const msgDiv = document.createElement('div');
             msgDiv.className = `message ${sender}`;
-            msgDiv.innerText = text;
+            if (sender === 'engine' && text.startsWith('<')) {
+                msgDiv.innerHTML = text;
+            } else {
+                msgDiv.innerText = text;
+            }
             chatFeed.appendChild(msgDiv);
-            chatFeed.scrollTop = chatFeed.scrollHeight; // Auto-scroll to view results
+            chatFeed.scrollTop = chatFeed.scrollHeight;
         }
 
         function setLoadingState(isLoading) {

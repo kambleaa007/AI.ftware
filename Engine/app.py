@@ -10,6 +10,14 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from Engine.aif_core_engine import AIFtwareEngine
 
+GEMINI_ENABLED = bool(os.environ.get("GEMINI_API_KEY", "").strip())
+if GEMINI_ENABLED:
+    try:
+        from google import genai as _genai
+        _gemini_client = _genai.Client()
+    except ImportError:
+        GEMINI_ENABLED = False
+
 app = FastAPI(
     title="AI.ftware Core Engine",
     description="Production CPU-Optimized Compound AI Architecture",
@@ -34,7 +42,7 @@ DYNAMIC_FACTS = {
     "physics": "Speed of light (c) = 299792458 m/s. Planck constant (h) = 6.62607015e-34 J s.",
     "health": "WHO recommends 150 minutes of moderate-intensity exercise per week for adults.",
     "technology": "Moore's Law predicts doubling of transistors every ~2 years on integrated circuits.",
-    "climate": "Global average temperature has risen ~1.1°C above pre-industrial levels (IPCC 2023).",
+    "climate": "Global average temperature has risen ~1.1C above pre-industrial levels (IPCC 2023).",
     "space": "The observable universe is approximately 93 billion light-years in diameter.",
     "biology": "Human DNA contains approximately 3 billion base pairs across 23 chromosome pairs.",
     "market": "The S&P 500 historically returns ~10% annually over long-term periods.",
@@ -68,6 +76,63 @@ def detect_domain(prompt: str) -> tuple:
     return best_domain, best_score
 
 
+class KnowledgeVault:
+    @staticmethod
+    async def fetch_verified_facts(user_id: str, prompt: str = "") -> dict:
+        await asyncio.sleep(0.002)
+        if prompt:
+            domain, score = detect_domain(prompt)
+            fact = DYNAMIC_FACTS.get(domain, DYNAMIC_FACTS["default"])
+        else:
+            domain = "default"
+            fact = DYNAMIC_FACTS["default"]
+        return {
+            "account_status": "Active",
+            "compliance_tier": "Level-1",
+            "regional_server": "IN-WEST-1 (Mumbai)",
+            "domain_detected": domain,
+            "verified_fact": fact,
+        }
+
+
+class GeminiEngine:
+    MODEL = "gemini-2.5-flash"
+
+    @staticmethod
+    def generate(prompt: str) -> str:
+        from google import genai
+        client = genai.Client()
+        response = client.models.generate_content(
+            model=GeminiEngine.MODEL,
+            contents=prompt,
+        )
+        return response.text
+
+
+class CPUFallbackEngine:
+    @staticmethod
+    def generate(prompt: str, domain: str = "default") -> str:
+        engine = AIFtwareEngine()
+        result = engine.pipeline(prompt, domain if domain != "default" else "regulatory_framework")
+        return result
+
+
+class ResponseRouter:
+    @staticmethod
+    def route(prompt: str, facts: dict) -> tuple:
+        domain = facts.get("domain_detected", "default")
+        if GEMINI_ENABLED:
+            try:
+                output = GeminiEngine.generate(prompt)
+                return output, "Gemini-2.5-Flash", True
+            except Exception:
+                fallback = CPUFallbackEngine.generate(prompt, domain)
+                return fallback, "CPU-Fallback", False
+        else:
+            output = CPUFallbackEngine.generate(prompt, domain)
+            return output, "CPU-Deterministic", False
+
+
 class UserRequest(BaseModel):
     user_id: str = Field(..., description="Unique identifier for the user session")
     prompt: str = Field(..., max_length=1000, description="Raw input text to be processed")
@@ -89,39 +154,6 @@ async def serve_frontend(request: Request):
     return {"status": "Engine running. UI not found."}
 
 
-class KnowledgeVault:
-    @staticmethod
-    async def fetch_verified_facts(user_id: str, prompt: str = "") -> dict:
-        await asyncio.sleep(0.002)
-        if prompt:
-            domain, score = detect_domain(prompt)
-            fact = DYNAMIC_FACTS.get(domain, DYNAMIC_FACTS["default"])
-        else:
-            domain = "default"
-            fact = DYNAMIC_FACTS["default"]
-        return {
-            "account_status": "Active",
-            "compliance_tier": "Level-1",
-            "regional_server": "IN-WEST-1 (Mumbai)",
-            "domain_detected": domain,
-            "verified_fact": fact,
-        }
-
-
-class DynamicResponseGenerator:
-    @staticmethod
-    def generate(prompt: str, facts: dict, word_count: int) -> str:
-        domain = facts.get("domain_detected", "general")
-        fact = facts.get("verified_fact", "")
-        engine = AIFtwareEngine()
-        engine_result = engine.pipeline(prompt, domain if domain != "default" else "regulatory_framework")
-        return (
-            f"[{domain.upper()} DOMAIN] {word_count} tokens processed.\n"
-            f"Fact: {fact}\n"
-            f"Engine: {engine_result}"
-        )
-
-
 # 4. The Main CPU Execution Route
 @app.post("/api/v1/execute", response_model=EngineResponse)
 async def process_cpu_request(payload: UserRequest):
@@ -135,13 +167,15 @@ async def process_cpu_request(payload: UserRequest):
         facts = await KnowledgeVault.fetch_verified_facts(payload.user_id, clean_prompt)
         word_count = len(clean_prompt.split())
 
-        final_output = DynamicResponseGenerator.generate(clean_prompt, facts, word_count)
+        final_output, engine_name, is_gemini = ResponseRouter.route(clean_prompt, facts)
 
         final_verification = {
             "is_hallucinated": False,
             "data_match_confirmed": True,
             "security_cleared": True,
             "domain": facts.get("domain_detected", "general"),
+            "engine": engine_name,
+            "gemini_active": is_gemini,
         }
 
         execution_time_ms = (time.perf_counter() - start_time) * 1000
@@ -149,7 +183,7 @@ async def process_cpu_request(payload: UserRequest):
         return EngineResponse(
             status="SUCCESS",
             execution_time_ms=round(execution_time_ms, 2),
-            hardware_used="AMD/Intel Multi-Threaded CPU Core",
+            hardware_used=engine_name,
             verified_data=final_verification,
             final_output=final_output,
         )
@@ -160,17 +194,21 @@ async def process_cpu_request(payload: UserRequest):
 # 5. Health Check Endpoint for Cloud Monitoring Tools
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "engine": "AI.ftware v1"}
+    return {"status": "healthy", "engine": "AI.ftware v1", "gemini": GEMINI_ENABLED}
 
 if __name__ == "__main__":
     import uvicorn
     import os
-    
+
     # Render dynamically assigns a port via the PORT environment variable (defaults to 10000)
     # This block allows your app to run perfectly on BOTH your local machine and the cloud.
     cloud_port = int(os.environ.get("PORT", 8000))
-    
+
     print(f"Initializing AI.ftware Web Interface on Production CPU Port {cloud_port}...")
-    
+    if GEMINI_ENABLED:
+        print("Gemini engine: ENABLED")
+    else:
+        print("Gemini engine: DISABLED (GEMINI_API_KEY not set)")
+
     # CRUCIAL CHANGE: host must be "0.0.0.0" to receive external cloud traffic
     uvicorn.run(app, host="0.0.0.0", port=cloud_port, reload=False)
