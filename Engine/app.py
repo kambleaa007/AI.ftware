@@ -101,7 +101,7 @@ class KnowledgeVault:
 
 
 class GeminiEngine:
-    MODEL = "gemini-2.5-flash"
+    MODEL = "gemini-3.6-flash"
 
     @staticmethod
     def generate(prompt: str) -> str:
