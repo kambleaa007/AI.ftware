@@ -99,6 +99,13 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    # Start the local production server
-    print("🚀 Initializing AI.ftware Web Interface on CPU...")
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
+    import os
+    
+    # Render dynamically assigns a port via the PORT environment variable (defaults to 10000)
+    # This block allows your app to run perfectly on BOTH your local machine and the cloud.
+    cloud_port = int(os.environ.get("PORT", 8000))
+    
+    print(f"🚀 Initializing AI.ftware Web Interface on Production CPU Port {cloud_port}...")
+    
+    # CRUCIAL CHANGE: host must be "0.0.0.0" to receive external cloud traffic
+    uvicorn.run("app:app", host="0.0.0.0", port=cloud_port, reload=False)
