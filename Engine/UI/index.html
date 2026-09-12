@@ -220,12 +220,15 @@
                 // Hydrate Telemetry Sidebar with live analytical variables
                 document.getElementById('hardware-tag').innerText = "Native CPU Core";
                 document.getElementById('latency-tag').innerText = `${data.execution_time_ms} ms`;
+                if (data.verified_data && data.verified_data.domain) {
+                    document.getElementById('fidelity-tag').innerText = data.verified_data.domain.toUpperCase() + " DETECTED";
+                }
                 
                 // Print verified structural answer directly to feed
                 appendMessage(data.final_output, 'engine');
 
             } catch (error) {
-                appendMessage(`System Failure: Could not reach the AI.ftware core engine server. Make sure your FastAPI backend app.py script is actively running locally on port 8000.`, 'engine');
+                appendMessage("System Failure: Could not reach the AI.ftware core engine server. Ensure the backend is running and accessible.", 'engine');
                 console.error(error);
             } finally {
                 setLoadingState(false);

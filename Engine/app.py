@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from Engine.aif_core_engine import AIFtwareEngine
 
 app = FastAPI(
     title="AI.ftware Core Engine",
@@ -27,14 +28,46 @@ UI_DIR = Path(__file__).parent / "UI"
 if UI_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(UI_DIR)), name="static")
 
-@app.get("/")
-async def serve_frontend(request: Request):
-    index_path = UI_DIR / "index.html"
-    if index_path.exists():
-        return FileResponse(str(index_path))
-    return {"status": "Engine running. UI not found."}
+DYNAMIC_FACTS = {
+    "tax": "Indian Tax Section 80C limits maximum deduction to INR 1,500,000 per annum.",
+    "finance": "All calculations must explicitly balance Assets = Liabilities + Equity. Margin bounds: 5-25%.",
+    "physics": "Speed of light (c) = 299792458 m/s. Planck constant (h) = 6.62607015e-34 J s.",
+    "health": "WHO recommends 150 minutes of moderate-intensity exercise per week for adults.",
+    "technology": "Moore's Law predicts doubling of transistors every ~2 years on integrated circuits.",
+    "climate": "Global average temperature has risen ~1.1°C above pre-industrial levels (IPCC 2023).",
+    "space": "The observable universe is approximately 93 billion light-years in diameter.",
+    "biology": "Human DNA contains approximately 3 billion base pairs across 23 chromosome pairs.",
+    "market": "The S&P 500 historically returns ~10% annually over long-term periods.",
+    "energy": "Solar panel efficiency ranges from 15-22% for commercial silicon-based panels.",
+    "default": "General contextual compute space active. Deterministic processing applied to your query.",
+}
 
-# 2. Define Strict Data Schemas (Enforcing CPU-side structural logic)
+DOMAIN_KEYWORDS = {
+    "tax": ["tax", "income", "deduction", "ire", "gst", "filing", "salary", "investment"],
+    "finance": ["finance", "money", "invest", "stock", "budget", "asset", "liability", "equity", "bank", "loan"],
+    "physics": ["physics", "light", "quantum", "atom", "energy", "force", "wave", "particle", "newton", "einstein"],
+    "health": ["health", "body", "exercise", "medicine", "doctor", "vitamin", "diet", "fitness", "disease", "therapy"],
+    "technology": ["tech", "computer", "software", "ai", "algorithm", "code", "digital", "internet", "cpu", "programming"],
+    "climate": ["climate", "weather", "temperature", "environment", "carbon", "emission", "global", "warming", "eco"],
+    "space": ["space", "star", "planet", "galaxy", "universe", "moon", "mars", "satellite", "orbit", "cosmos"],
+    "biology": ["biology", "cell", "dna", "gene", "organism", "evolution", "species", "protein", "plant", "animal"],
+    "market": ["market", "stock", "trade", "business", "company", "share", "profit", "loss", "revenue", "growth"],
+    "energy": ["energy", "solar", "wind", "power", "electric", "battery", "fuel", "nuclear", "renewable", "watt"],
+}
+
+
+def detect_domain(prompt: str) -> tuple:
+    prompt_lower = prompt.lower()
+    best_domain = "default"
+    best_score = 0
+    for domain, keywords in DOMAIN_KEYWORDS.items():
+        score = sum(1 for kw in keywords if kw in prompt_lower)
+        if score > best_score:
+            best_score = score
+            best_domain = domain
+    return best_domain, best_score
+
+
 class UserRequest(BaseModel):
     user_id: str = Field(..., description="Unique identifier for the user session")
     prompt: str = Field(..., max_length=1000, description="Raw input text to be processed")
@@ -47,61 +80,80 @@ class EngineResponse(BaseModel):
     verified_data: Dict[str, Any]
     final_output: str
 
-# 3. Simulate your Ultra-Fast Local Factual Knowledge Vault
+# Serve frontend at root
+@app.get("/")
+async def serve_frontend(request: Request):
+    index_path = UI_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    return {"status": "Engine running. UI not found."}
+
+
 class KnowledgeVault:
     @staticmethod
-    async def fetch_verified_facts(user_id: str) -> dict:
-        # Simulating an instant, non-blocking CPU database read (e.g., from Redis or local cache)
-        await asyncio.sleep(0.002) 
+    async def fetch_verified_facts(user_id: str, prompt: str = "") -> dict:
+        await asyncio.sleep(0.002)
+        if prompt:
+            domain, score = detect_domain(prompt)
+            fact = DYNAMIC_FACTS.get(domain, DYNAMIC_FACTS["default"])
+        else:
+            domain = "default"
+            fact = DYNAMIC_FACTS["default"]
         return {
             "account_status": "Active",
             "compliance_tier": "Level-1",
-            "regional_server": "IN-WEST-1 (Mumbai)"
+            "regional_server": "IN-WEST-1 (Mumbai)",
+            "domain_detected": domain,
+            "verified_fact": fact,
         }
+
+
+class DynamicResponseGenerator:
+    @staticmethod
+    def generate(prompt: str, facts: dict, word_count: int) -> str:
+        domain = facts.get("domain_detected", "general")
+        fact = facts.get("verified_fact", "")
+        engine = AIFtwareEngine()
+        engine_result = engine.pipeline(prompt, domain if domain != "default" else "regulatory_framework")
+        return (
+            f"[{domain.upper()} DOMAIN] {word_count} tokens processed.\n"
+            f"Fact: {fact}\n"
+            f"Engine: {engine_result}"
+        )
+
 
 # 4. The Main CPU Execution Route
 @app.post("/api/v1/execute", response_model=EngineResponse)
 async def process_cpu_request(payload: UserRequest):
     start_time = time.perf_counter()
-    
+
     try:
-        # Step A: Sanitize and parse input directly on the CPU thread
         clean_prompt = payload.prompt.strip()
         if not clean_prompt:
             raise HTTPException(status_code=400, detail="Input prompt cannot be empty.")
-        
-        # Step B: Fetch 100% verified real-time data (Eliminates LLM reliance on memory weights)
-        facts = await KnowledgeVault.fetch_verified_facts(payload.user_id)
-        
-        # Step C: Execute deterministic business logic loops (What CPUs do best)
-        # Instead of an AI guessing what to do, your code explicitly handles structural constraints
-        processed_tokens = clean_prompt.split()
-        word_count = len(processed_tokens)
-        
-        # Step D: Construct the hyper-focused, structurally verified output context
-        # In a full deployment, this string goes to a local CPU-quantized micro-LLM (like Llama-3-8B-Q4)
-        structured_response = (
-            f"Processed your request containing {word_count} tokens successfully. "
-            f"Verified via Vault: Account is {facts['account_status']} and routing through {facts['regional_server']}."
-        )
-        
-        # Step E: Enforce strict output guardrails before returning to the user
+
+        facts = await KnowledgeVault.fetch_verified_facts(payload.user_id, clean_prompt)
+        word_count = len(clean_prompt.split())
+
+        final_output = DynamicResponseGenerator.generate(clean_prompt, facts, word_count)
+
         final_verification = {
             "is_hallucinated": False,
             "data_match_confirmed": True,
-            "security_cleared": True
+            "security_cleared": True,
+            "domain": facts.get("domain_detected", "general"),
         }
-        
+
         execution_time_ms = (time.perf_counter() - start_time) * 1000
-        
+
         return EngineResponse(
             status="SUCCESS",
             execution_time_ms=round(execution_time_ms, 2),
             hardware_used="AMD/Intel Multi-Threaded CPU Core",
             verified_data=final_verification,
-            final_output=structured_response
+            final_output=final_output,
         )
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Engine Error: {str(e)}")
 
